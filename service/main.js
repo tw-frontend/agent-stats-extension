@@ -36,6 +36,7 @@ var DISPLAY_NAMES = [
   ["gemini-3-flash", "Gemini 3 Flash"],
   ["gemini-2.5-pro", "Gemini 2.5 Pro"],
   ["glm-5.3", "GLM 5.3"],
+  ["glm-5.3-flash", "GLM 5.3 Flash"],
   ["kimi-k2-thinking", "Kimi K2 Thinking"],
   ["muse-spark-1.1", "Muse Spark 1.1"],
   ["muse-spark-1.2", "Muse Spark 1.2"],
