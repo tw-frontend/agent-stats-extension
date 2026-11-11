@@ -168,6 +168,9 @@ try {
   assert.equal(d.pairs[0].model, 'openai/gpt-5');
   const buildPair = d.pairs.find((p) => p.agent === 'build');
   assert.equal(buildPair.model, 'anthropic/claude-sonnet-4');
+  assert.equal(buildPair.effort, 'high', `default effort for claude: ${JSON.stringify(buildPair)}`); // no variant -> provider default
+  assert.equal(buildPair.name, 'Claude Sonnet 4.5', `display name: ${JSON.stringify(buildPair)}`);
+  assert.equal(d.pairs.find((p) => p.agent === 'plan').effort, 'medium', `default effort for gpt-5: ${JSON.stringify(d.pairs)}`);
   assert.equal(buildPair.prompts, 17);
   assert.equal(buildPair.steps, 17);
 

@@ -34,6 +34,52 @@ const MESSAGE_PAGE_FLOOR = 25;
 const MAX_MESSAGE_PAGES = 1_000; // safety valve per session; sets "incomplete"
 const MAX_SESSIONS = 20_000;     // safety valve on listing; sets "incomplete"
 
+// OpenRouter routing suffixes mark the same model served differently —
+// :nitro (fastest), :floor (cheapest), :free, :batch count as the base model.
+const ROUTING_SUFFIX = /:(nitro|floor|free|batch)$/;
+
+// Display names (opencode-style) matched against the bare or provider-
+// qualified model id; anything unlisted falls back to the stripped id.
+const DISPLAY_NAMES: Array<[string, string]> = [
+  ['claude-opus-4-6', 'Claude Opus 4.6'],
+  ['claude-sonnet-4', 'Claude Sonnet 4.5'],
+  ['claude-opus-4-5', 'Claude Opus 4.5'],
+  ['gpt-5.2', 'GPT 5.2'],
+  ['gpt-5.1-codex', 'GPT 5.1 Codex'],
+  ['gpt-5.1', 'GPT 5.1'],
+  ['gpt-5', 'GPT 5'],
+  ['gemini-3-pro', 'Gemini 3 Pro'],
+  ['gemini-3-flash', 'Gemini 3 Flash'],
+  ['gemini-2.5-pro', 'Gemini 2.5 Pro'],
+  ['glm-5.3', 'GLM 5.3'],
+  ['kimi-k2-thinking', 'Kimi K2 Thinking'],
+];
+
+// Default reasoning effort when a message carries no variant — each entry
+// tracks its provider's documented API default.
+const DEFAULT_EFFORT: Array<[RegExp, string]> = [
+  [/^claude[-_]/, 'high'],     // Anthropic defaults effort to high
+  [/^(gpt-5|o[134])/, 'medium'], // OpenAI defaults reasoning_effort to medium
+  [/^gemini-3/, 'high'],       // Google defaults thinking_level to high
+];
+
+function defaultEffort(base: string): string {
+  const id = base.toLowerCase();
+  for (const [re, eff] of DEFAULT_EFFORT) {
+    if (re.test(id)) return eff;
+  }
+  return '';
+}
+
+function displayName(provider: string, base: string): string {
+  const bare = provider === 'openrouter' ? (base.split('/').pop() || base) : base;
+  const full = provider ? `${provider}/${base}` : base;
+  for (const [id, name] of DISPLAY_NAMES) {
+    if (bare === id || full === id) return name;
+  }
+  return bare;
+}
+
 function isValidRec(r: unknown): r is Rec {
   return Array.isArray(r) && r.length === 8;
 }
@@ -219,7 +265,7 @@ async function collectSession(sid: string, updated: number, deadline: number): P
   for (const m of st.raw) {
     const type = m?.type ?? m?.role;
     if (type === 'assistant') {
-      const model = str(m?.model?.id) || str(m?.modelID) || 'unknown';
+      const model = (str(m?.model?.id) || str(m?.modelID) || 'unknown').replace(ROUTING_SUFFIX, '');
       const variant = str(m?.model?.variant);
       const provider = str(m?.model?.providerID) || str(m?.providerID);
       const tk = m?.tokens;
@@ -391,7 +437,7 @@ function aggregate(period: string) {
   const granularity: 'day' | 'hour' = cutoff > 0 && now - cutoff <= 48 * HOUR ? 'hour' : 'day';
   const series = cutoff > 0 ? buildSeries(cutoff, now, granularity) : [];
   const agents = new Map<string, Agg>();
-  const pairs = new Map<string, Agg & { agent: string; model: string; effort: string }>();
+  const pairs = new Map<string, Agg & { agent: string; model: string; effort: string; name: string }>();
   const totals = { cost: 0, prompts: 0, steps: 0, tokens: 0, sessions: 0 };
 
   const bump = (map: Map<string, Agg>, key: string, r: Rec): Agg => {
@@ -418,11 +464,14 @@ function aggregate(period: string) {
       totals.tokens += r[6];
       bump(agents, r[2], r);
       if (r[1] === 1 || r[4]) {
-        const key = `${r[2]}\u0000${r[3]}/${r[4]}\u0000${r[7]}`;
-        const entry = bump(pairs, key, r) as Agg & { agent: string; model: string; effort: string };
+        const base = r[3] ? `${r[3]}/${r[4]}` : r[4];
+        const eff = r[7] || defaultEffort(r[4]);
+        const key = `${r[2]}\u0000${base}\u0000${eff}`;
+        const entry = bump(pairs, key, r) as Agg & { agent: string; model: string; effort: string; name: string };
         entry.agent = r[2];
-        entry.model = r[3] ? `${r[3]}/${r[4]}` : r[4];
-        entry.effort = r[7];
+        entry.model = base;
+        entry.effort = eff;
+        entry.name = displayName(r[3], r[4]);
       }
     }
     if (used) totals.sessions++;
@@ -432,7 +481,7 @@ function aggregate(period: string) {
     .map(([agent, a]) => ({ agent, prompts: a.p, steps: a.s, cost: a.c, tokens: a.t }))
     .sort((x, y) => (y.cost - x.cost) || (y.steps - x.steps) || x.agent.localeCompare(y.agent));
   const pairRows = [...pairs.values()]
-    .map(({ p, s, c, t, agent, model, effort }) => ({ agent, model, effort, prompts: p, steps: s, cost: c, tokens: t }))
+    .map(({ p, s, c, t, agent, model, effort, name }) => ({ agent, model, effort, name, prompts: p, steps: s, cost: c, tokens: t }))
     .sort((x, y) => (y.cost - x.cost) || (y.steps - x.steps) || (x.agent + x.model).localeCompare(y.agent + y.model));
 
   return {

@@ -5,7 +5,7 @@ const host = connectHost();
 const body = document.getElementById('body') as HTMLElement;
 
 type AgentRow = { agent: string; prompts: number; steps: number; cost: number; tokens: number };
-type PairRow = { agent: string; model: string; effort?: string; prompts: number; steps: number; cost: number; tokens: number };
+type PairRow = { agent: string; model: string; effort?: string; name?: string; prompts: number; steps: number; cost: number; tokens: number };
 type Bucket = { startMs: number; prompts: number; steps: number; cost: number; tokens: number };
 type StatsData = {
   period: string;
@@ -197,7 +197,7 @@ function renderPairTable(data: StatsData): void {
     for (const p of sorted) {
       const name = el('div', 'namecell');
       const line = el('div', 'nameline');
-      line.appendChild(el('span', 'nm model', modelName(p.model)));
+      line.appendChild(el('span', 'nm model', p.name ?? modelName(p.model)));
       name.appendChild(line);
       const cells = [p.effort || '—', ...SORT_ITEMS.map((s) => fmtMetric(s.id, metricOf(p, s.id)))];
       wrap.appendChild(gridRow(cells, 'row pairs', name));
