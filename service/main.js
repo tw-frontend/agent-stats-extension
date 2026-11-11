@@ -20,7 +20,10 @@ var MESSAGE_PAGE = 200;
 var MESSAGE_PAGE_FLOOR = 25;
 var MAX_MESSAGE_PAGES = 1000;
 var MAX_SESSIONS = 20000;
-var ROUTING_SUFFIX = /:(nitro|floor|free|batch)$/;
+var ROUTING_SUFFIX = /[-:](nitro|floor|free|batch)$/;
+function canonicalModel(id) {
+  return id.replace(ROUTING_SUFFIX, ":$1");
+}
 var DISPLAY_NAMES = [
   ["claude-opus-4-6", "Claude Opus 4.6"],
   ["claude-sonnet-4", "Claude Sonnet 4.5"],
@@ -33,15 +36,25 @@ var DISPLAY_NAMES = [
   ["gemini-3-flash", "Gemini 3 Flash"],
   ["gemini-2.5-pro", "Gemini 2.5 Pro"],
   ["glm-5.3", "GLM 5.3"],
-  ["kimi-k2-thinking", "Kimi K2 Thinking"]
+  ["kimi-k2-thinking", "Kimi K2 Thinking"],
+  ["muse-spark-1.1", "Muse Spark 1.1"],
+  ["muse-spark-1.2", "Muse Spark 1.2"],
+  ["muse-spark-1.2-contributor", "Muse Spark 1.2 (contributor)"],
+  ["muse-ember", "Muse Ember"],
+  ["nex-n2.5-pro", "Nex-N2.5 Pro"],
+  ["nex-n2.5-mini", "Nex-N2.5 Mini"],
+  ["nex-n2.6", "Nex-N2.6"]
 ];
 var DEFAULT_EFFORT = [
   [/^claude[-_]/, "high"],
   [/^(gpt-5|o[134])/, "medium"],
-  [/^gemini-3/, "high"]
+  [/^gemini-3/, "high"],
+  [/^glm/, "max"],
+  [/^deepseek/, "max"],
+  [/^nex-n2\.5/, "medium"]
 ];
 function defaultEffort(base) {
-  const id = base.toLowerCase();
+  const id = (base.split("/").pop() || base).toLowerCase();
   for (const [re, eff] of DEFAULT_EFFORT) {
     if (re.test(id))
       return eff;
@@ -49,11 +62,14 @@ function defaultEffort(base) {
   return "";
 }
 function displayName(provider, base) {
-  const bare = provider === "openrouter" ? base.split("/").pop() || base : base;
+  const bare = base.split("/").pop() || base;
+  const routing = ROUTING_SUFFIX.exec(bare);
+  const suffix = routing ? `:${routing[1]}` : "";
+  const stem = routing ? bare.slice(0, routing.index) : bare;
   const full = provider ? `${provider}/${base}` : base;
   for (const [id, name] of DISPLAY_NAMES) {
-    if (bare === id || full === id)
-      return name;
+    if (stem === id || full === id || bare === id)
+      return name + suffix;
   }
   return bare;
 }
@@ -63,7 +79,7 @@ function isValidRec(r) {
 function loadState() {
   try {
     const raw = JSON.parse(fs.readFileSync(STATE_FILE, "utf8"));
-    if (raw && raw.v === 2 && raw.sessions && typeof raw.sessions === "object") {
+    if (raw && raw.v === 3 && raw.sessions && typeof raw.sessions === "object") {
       const sessions = {};
       let dropped = 0;
       for (const [id, val] of Object.entries(raw.sessions)) {
@@ -75,7 +91,7 @@ function loadState() {
         }
       }
       return {
-        v: 2,
+        v: 3,
         complete: !!raw.complete && dropped === 0,
         incomplete: !!raw.incomplete || dropped > 0,
         savedAt: Number(raw.savedAt) || 0,
@@ -83,7 +99,7 @@ function loadState() {
       };
     }
   } catch {}
-  return { v: 2, complete: false, incomplete: false, savedAt: 0, sessions: {} };
+  return { v: 3, complete: false, incomplete: false, savedAt: 0, sessions: {} };
 }
 var state = loadState();
 function saveState() {
@@ -212,7 +228,7 @@ async function collectSession(sid, updated, deadline) {
   for (const m of st.raw) {
     const type = m?.type ?? m?.role;
     if (type === "assistant") {
-      const model = (str(m?.model?.id) || str(m?.modelID) || "unknown").replace(ROUTING_SUFFIX, "");
+      const model = canonicalModel(str(m?.model?.id) || str(m?.modelID) || "unknown");
       const variant = str(m?.model?.variant);
       const provider = str(m?.model?.providerID) || str(m?.providerID);
       const tk = m?.tokens;

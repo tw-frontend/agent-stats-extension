@@ -36,6 +36,7 @@ const messages = {
 };
 
 let extraS2 = false;
+let extraS2b = false;
 
 const oc = http.createServer((req, res) => {
   const url = new URL(req.url, 'http://x');
@@ -52,6 +53,17 @@ const oc = http.createServer((req, res) => {
     let msgs = messages[sid] ?? [];
     if (sid === 's2' && extraS2) {
       msgs = [...msgs, { id: 'm8', type: 'assistant', agent: 'review', model: { id: 'gemini-3', providerID: 'google' }, time: { created: now - 30e3 }, cost: 0.03, tokens: { input: 700, output: 200, reasoning: 50, cache: { read: 30, write: 20 } } }];
+    }
+    if (sid === 's2' && extraS2b) {
+      const step = (id, agent, modelId, providerID, dt) => ({ id, type: 'assistant', agent, model: { id: modelId, providerID }, time: { created: now - dt }, cost: 0.001, tokens: { input: 10, output: 5, reasoning: 0, cache: { read: 0, write: 0 } } });
+      msgs = [...msgs,
+        step('m9', 'build', 'z-ai/glm-5.3-nitro', 'openrouter', 25e3), // dash separator
+        step('m10', 'build', 'z-ai/glm-5.3:nitro', 'openrouter', 24e3), // colon separator -> same model as m9
+        step('m11', 'build', 'z-ai/glm-5.3:floor', 'openrouter', 23e3), // different model
+        step('m12', 'build', 'deepseek-v4', 'deepseek', 22e3),
+        step('m13', 'build', 'muse-spark-1.1', 'meta', 21e3),
+        step('m14', 'build', 'nex-n2.5-pro', 'nex-agi', 20e3),
+      ];
     }
     if (sid === 's5') return boom(); // never readable -> overflow
     if (sid === 's4' && Number(url.searchParams.get('limit') ?? 0) > 25) return boom(); // force halving
@@ -247,6 +259,28 @@ try {
   assert.equal(afterRestart.body.complete, true);
   assert.equal(afterRestart.body.data.totals.steps, 19, `restart steps: ${JSON.stringify(afterRestart.body.data)}`);
   assert.ok(afterRestart.body.ageMs >= 0);
+
+  // routing variants + effort defaults: -nitro == :nitro (one model),
+  // :floor stays separate; GLM/DeepSeek default max, Nex-N2.5 medium,
+  // Meta no default.
+  extraS2b = true;
+  sessions[1].time.updated = now + 1; // re-bump so the session is re-read
+  const wave2 = await statsUntilComplete({ period: 'all', fresh: '1' });
+  const d2 = wave2.data;
+  assert.equal(d2.totals.steps, 25, `wave2 steps: ${JSON.stringify(d2.totals)}`);
+  assert.equal(d2.pairs.length, 8, `wave2 pairs: ${JSON.stringify(d2.pairs)}`);
+  const nitro = d2.pairs.find((p) => p.model === 'openrouter/z-ai/glm-5.3:nitro');
+  assert.ok(nitro && nitro.steps === 2, `dash+colon nitro merged: ${JSON.stringify(d2.pairs)}`);
+  assert.equal(nitro.effort, 'max', `glm default effort: ${JSON.stringify(nitro)}`);
+  assert.equal(nitro.name, 'GLM 5.3:nitro', `glm display name keeps suffix: ${JSON.stringify(nitro)}`);
+  const floor = d2.pairs.find((p) => p.model === 'openrouter/z-ai/glm-5.3:floor');
+  assert.ok(floor && floor.steps === 1 && floor.name === 'GLM 5.3:floor', `floor separate: ${JSON.stringify(d2.pairs)}`);
+  const ds = d2.pairs.find((p) => p.model === 'deepseek/deepseek-v4');
+  assert.ok(ds && ds.effort === 'max', `deepseek default max: ${JSON.stringify(d2.pairs)}`);
+  const meta = d2.pairs.find((p) => p.model === 'meta/muse-spark-1.1');
+  assert.ok(meta && meta.effort === '' && meta.name === 'Muse Spark 1.1', `meta no default: ${JSON.stringify(d2.pairs)}`);
+  const nex = d2.pairs.find((p) => p.model === 'nex-agi/nex-n2.5-pro');
+  assert.ok(nex && nex.effort === 'medium' && nex.name === 'Nex-N2.5 Pro', `nex default medium: ${JSON.stringify(d2.pairs)}`);
 
   console.log('ALL TESTS PASSED');
 } finally {

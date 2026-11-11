@@ -23,7 +23,7 @@ if (!TOKEN || !OC_URL || !PORT) {
 // one message record: [timeMs, kind(0=prompt,1=step), agent, provider, model, cost, tokens, effortVariant]
 type Rec = [number, 0 | 1, string, string, string, number, number, string];
 type SessionState = { u: number; r: Rec[] };
-type Persisted = { v: 2; complete: boolean; incomplete: boolean; savedAt: number; sessions: Record<string, SessionState> };
+type Persisted = { v: 3; complete: boolean; incomplete: boolean; savedAt: number; sessions: Record<string, SessionState> };
 
 const DAY = 86_400_000;
 const SLICE_MS = 2_500;          // work budget per /stats call (RPC limit is 20 s)
@@ -34,9 +34,15 @@ const MESSAGE_PAGE_FLOOR = 25;
 const MAX_MESSAGE_PAGES = 1_000; // safety valve per session; sets "incomplete"
 const MAX_SESSIONS = 20_000;     // safety valve on listing; sets "incomplete"
 
-// OpenRouter routing suffixes mark the same model served differently —
-// :nitro (fastest), :floor (cheapest), :free, :batch count as the base model.
-const ROUTING_SUFFIX = /:(nitro|floor|free|batch)$/;
+// OpenRouter routing suffixes are part of the model identity (:nitro !=
+// :floor — fastest vs cheapest are different models). Only the separator
+// spelling varies: `-nitro` and `:nitro` are the same model, canonicalized
+// to the colon form.
+const ROUTING_SUFFIX = /[-:](nitro|floor|free|batch)$/;
+
+function canonicalModel(id: string): string {
+  return id.replace(ROUTING_SUFFIX, ':$1');
+}
 
 // Display names (opencode-style) matched against the bare or provider-
 // qualified model id; anything unlisted falls back to the stripped id.
@@ -53,18 +59,29 @@ const DISPLAY_NAMES: Array<[string, string]> = [
   ['gemini-2.5-pro', 'Gemini 2.5 Pro'],
   ['glm-5.3', 'GLM 5.3'],
   ['kimi-k2-thinking', 'Kimi K2 Thinking'],
+  ['muse-spark-1.1', 'Muse Spark 1.1'],
+  ['muse-spark-1.2', 'Muse Spark 1.2'],
+  ['muse-spark-1.2-contributor', 'Muse Spark 1.2 (contributor)'],
+  ['muse-ember', 'Muse Ember'],
+  ['nex-n2.5-pro', 'Nex-N2.5 Pro'],
+  ['nex-n2.5-mini', 'Nex-N2.5 Mini'],
+  ['nex-n2.6', 'Nex-N2.6'],
 ];
 
 // Default reasoning effort when a message carries no variant — each entry
-// tracks its provider's documented API default.
+// tracks its provider's API default. Meta has no documented default, so it
+// is deliberately absent and resolves to blank.
 const DEFAULT_EFFORT: Array<[RegExp, string]> = [
   [/^claude[-_]/, 'high'],     // Anthropic defaults effort to high
   [/^(gpt-5|o[134])/, 'medium'], // OpenAI defaults reasoning_effort to medium
   [/^gemini-3/, 'high'],       // Google defaults thinking_level to high
+  [/^glm/, 'max'],             // Z.ai GLM API default (user-specified)
+  [/^deepseek/, 'max'],        // DeepSeek API default (user-specified)
+  [/^nex-n2\.5/, 'medium'],    // Nex-N2.5 README: reasoning_effort "medium" (default)
 ];
 
 function defaultEffort(base: string): string {
-  const id = base.toLowerCase();
+  const id = (base.split('/').pop() || base).toLowerCase();
   for (const [re, eff] of DEFAULT_EFFORT) {
     if (re.test(id)) return eff;
   }
@@ -72,10 +89,13 @@ function defaultEffort(base: string): string {
 }
 
 function displayName(provider: string, base: string): string {
-  const bare = provider === 'openrouter' ? (base.split('/').pop() || base) : base;
+  const bare = (base.split('/').pop() || base);
+  const routing = ROUTING_SUFFIX.exec(bare);
+  const suffix = routing ? `:${routing[1]}` : '';
+  const stem = routing ? bare.slice(0, routing.index) : bare;
   const full = provider ? `${provider}/${base}` : base;
   for (const [id, name] of DISPLAY_NAMES) {
-    if (bare === id || full === id) return name;
+    if (stem === id || full === id || bare === id) return name + suffix;
   }
   return bare;
 }
@@ -87,7 +107,7 @@ function isValidRec(r: unknown): r is Rec {
 function loadState(): Persisted {
   try {
     const raw = JSON.parse(fs.readFileSync(STATE_FILE, 'utf8'));
-    if (raw && raw.v === 2 && raw.sessions && typeof raw.sessions === 'object') {
+    if (raw && raw.v === 3 && raw.sessions && typeof raw.sessions === 'object') {
       const sessions: Record<string, SessionState> = {};
       let dropped = 0;
       for (const [id, val] of Object.entries(raw.sessions as Record<string, unknown>)) {
@@ -99,7 +119,7 @@ function loadState(): Persisted {
         }
       }
       return {
-        v: 2,
+        v: 3,
         complete: !!raw.complete && dropped === 0,
         incomplete: !!raw.incomplete || dropped > 0,
         savedAt: Number(raw.savedAt) || 0,
@@ -109,7 +129,7 @@ function loadState(): Persisted {
   } catch {
     // missing or corrupt file -> start fresh
   }
-  return { v: 2, complete: false, incomplete: false, savedAt: 0, sessions: {} };
+  return { v: 3, complete: false, incomplete: false, savedAt: 0, sessions: {} };
 }
 
 const state: Persisted = loadState();
@@ -265,7 +285,7 @@ async function collectSession(sid: string, updated: number, deadline: number): P
   for (const m of st.raw) {
     const type = m?.type ?? m?.role;
     if (type === 'assistant') {
-      const model = (str(m?.model?.id) || str(m?.modelID) || 'unknown').replace(ROUTING_SUFFIX, '');
+      const model = canonicalModel(str(m?.model?.id) || str(m?.modelID) || 'unknown');
       const variant = str(m?.model?.variant);
       const provider = str(m?.model?.providerID) || str(m?.providerID);
       const tk = m?.tokens;
