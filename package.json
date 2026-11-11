@@ -1,0 +1,35 @@
+{
+  "name": "@simra/agent-stats",
+  "version": "1.0.0",
+  "description": "Agent Stats — per-agent and per-agent × model cost, prompts and steps for OpenChamber, styled like the built-in stats page.",
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "files": [
+    "panel",
+    "service",
+    "README.md"
+  ],
+  "openchamber": {
+    "apiVersion": 1,
+    "engines": { "openchamber": ">=2.7.0" },
+    "id": "agent-stats",
+    "name": "Agent Stats",
+    "icon": "bar-chart",
+    "contributes": {
+      "panel": { "entry": "panel/index.html" },
+      "service": { "entry": "service/main.js", "runtime": "host", "provides": ["opencode"] }
+    }
+  },
+  "scripts": {
+    "build": "npx openchamber-guest-bundle panel/main.ts panel/main.js && npx openchamber-guest-bundle --node service/main.ts service/main.js",
+    "typecheck": "npx tsc --noEmit --strict --skipLibCheck --module esnext --moduleResolution bundler --target es2022 --lib es2022,dom panel/main.ts service/main.ts",
+    "test": "node test/run.mjs",
+    "check": "npm run typecheck && npm test && npm run build && npx openchamber-guest-check"
+  },
+  "devDependencies": {
+    "@openchamber/sdk": "2.7.0",
+    "@types/node": "^22.0.0",
+    "typescript": "^5.6.0"
+  }
+}

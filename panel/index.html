@@ -1,0 +1,114 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  :root { color-scheme: light dark; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: var(--oc-font, system-ui, sans-serif);
+    color: var(--oc-fg, inherit);
+    font-size: 13px;
+    line-height: 1.45;
+  }
+  #root { padding: 12px; box-sizing: border-box; }
+  .row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .row .spacer { flex: 1; }
+  .micro { font-size: 11px; color: var(--oc-muted, inherit); }
+
+  .cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin: 12px 0; }
+  @media (min-width: 640px) { .cards { grid-template-columns: repeat(5, minmax(0, 1fr)); } }
+  .card {
+    background: var(--oc-elevated, transparent);
+    border: 1px solid var(--oc-border, transparent);
+    border-radius: var(--oc-radius, 8px);
+    padding: 8px 10px;
+    min-width: 0;
+    display: flex; flex-direction: column; gap: 2px;
+  }
+  .card .label { font-size: 11px; color: var(--oc-muted, inherit); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .card .value { font-size: 18px; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .card .hint { font-size: 11px; color: var(--oc-muted, inherit); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  .section { margin: 14px 0 6px; display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+  .section h2 { font-size: 12px; font-weight: 600; color: var(--oc-fg, inherit); margin: 0; }
+  .panel-card {
+    background: var(--oc-elevated, transparent);
+    border: 1px solid var(--oc-border, transparent);
+    border-radius: var(--oc-radius, 8px);
+    padding: 12px 12px 10px;
+  }
+
+  .bars { position: relative; display: flex; align-items: flex-end; gap: 1px; height: 128px; }
+  .bcol { flex: 1; min-width: 2px; position: relative; display: flex; align-items: flex-end; height: 100%; cursor: default; outline: none; }
+  .bcol:focus-visible { outline: 2px solid var(--oc-focus, var(--oc-primary)); outline-offset: 1px; border-radius: 2px; }
+  .bar { width: 100%; background: var(--oc-primary, #6366f1); border-radius: 2px 2px 0 0; transition: opacity .1s; }
+  .bar.zero { background: var(--oc-border, #888); height: 1px !important; }
+  .bars:hover .bcol:not(:hover) .bar:not(.zero) { opacity: .5; }
+  .tip {
+    position: absolute; bottom: calc(100% + 6px); transform: translateX(-50%);
+    background: var(--oc-elevated, #222); border: 1px solid var(--oc-border, #444);
+    border-radius: var(--oc-radius, 8px); padding: 4px 8px; font-size: 11px;
+    color: var(--oc-fg, inherit); white-space: nowrap; display: none; pointer-events: none; z-index: 5;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, .18);
+  }
+  .tip.show { display: block; }
+  .tip.edge-l { left: 0 !important; transform: none; }
+  .tip.edge-r { left: auto !important; right: 0; transform: none; }
+  .xaxis { display: flex; justify-content: space-between; gap: 8px; font-size: 11px; color: var(--oc-muted, inherit); margin-top: 6px; }
+
+  .share { display: flex; height: 10px; border-radius: 999px; overflow: hidden; background: var(--oc-subtle, var(--oc-border, #333)); }
+  .seg { height: 100%; }
+  .legend { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 12px; margin-top: 10px; }
+  @media (min-width: 640px) { .legend { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+  .legend .item { display: flex; min-width: 0; align-items: center; gap: 6px; font-size: 11px; }
+  .dot { width: 8px; height: 8px; border-radius: 999px; flex: none; }
+  .legend .name { color: var(--oc-muted, inherit); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .legend .val { margin-left: auto; font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+  .rows .row { display: flex; align-items: center; gap: 8px; padding: 7px 0; border-bottom: 1px solid var(--oc-border, transparent); }
+  .rows .row:last-child { border-bottom: none; }
+  .rows .name { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .rows .right { margin-left: auto; text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .rows .model { font-family: var(--oc-mono, monospace); font-size: 12px; }
+  .meter { height: 2px; background: var(--oc-primary, #6366f1); border-radius: 999px; opacity: .4; margin-top: 3px; }
+  .subhead { font-size: 11px; font-weight: 600; color: var(--oc-muted, inherit); margin: 10px 0 2px; }
+
+  .sortrow { margin-top: 8px; }
+  .tblwrap { overflow-x: auto; }
+  .gt { display: grid; grid-template-columns: minmax(0, 2.2fr) repeat(5, minmax(0, 1fr)); gap: 0 10px; align-items: center; min-width: 560px; }
+  .gt.pairs { grid-template-columns: minmax(0, 2fr) 84px repeat(5, minmax(0, 1fr)); min-width: 620px; }
+  .gt .num.mono { font-family: var(--oc-mono, monospace); }
+  .gt.head { padding: 2px 0 6px; }
+  .gt.head > div { font-size: 11px; color: var(--oc-muted, inherit); white-space: nowrap; }
+  .gt.head > div:not(:first-child) { text-align: right; }
+  .gt.row { padding: 7px 0; border-top: 1px solid var(--oc-border, transparent); }
+  .gt .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; font-size: 12px; }
+  .namecell { min-width: 0; }
+  .nameline { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .nameline .nm { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .nameline .nm.model { font-family: var(--oc-mono, monospace); font-size: 12px; font-weight: 400; }
+  .meterwrap { margin-top: 3px; }
+
+  .loading { display: flex; align-items: center; gap: 10px; padding: 18px 0; color: var(--oc-muted, inherit); }
+  .note { margin-top: 12px; font-size: 11px; color: var(--oc-muted, inherit); }
+</style>
+</head>
+<body>
+<div id="root">
+  <div class="row">
+    <div id="tabs"></div>
+    <div class="spacer"></div>
+    <span id="updated" class="micro"></span>
+    <div id="refresh"></div>
+  </div>
+  <div class="row sortrow">
+    <span class="micro">Sort by</span>
+    <div id="sort"></div>
+  </div>
+  <div id="body"></div>
+  <div class="note">Prompts = user messages, credited to the agent that replied. Steps = model responses. Times are local; the Shamsi window starts on the 1st of the current Persian month.</div>
+</div>
+<script src="./main.js"></script>
+</body>
+</html>
