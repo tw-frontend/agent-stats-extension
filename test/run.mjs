@@ -85,6 +85,22 @@ const ocPort = oc.address().port;
 const dataDir = '/tmp/opencode/agent-stats-test';
 fs.rmSync(dataDir, { recursive: true, force: true });
 
+// Stub OpenCode config with per-model display names (hermetic: the service
+// must never read this machine's real opencode.json during tests).
+const cfgPath = '/tmp/opencode/agent-stats-test-config.json';
+fs.writeFileSync(cfgPath, JSON.stringify({
+  providers: {
+    openrouter: {
+      models: {
+        'z-ai/glm-5.3:nitro': { name: 'Fixture GLM Nitro Name' },
+        'z-ai/glm-5.3-floor': { name: 'Fixture GLM Floor Name' }, // dash key
+      },
+    },
+    deepseek: { models: { 'deepseek-v4': { name: '' } } }, // empty name -> fallback
+  },
+}));
+let svcConfigPath = cfgPath;
+
 const svcPort = 4599;
 let svc;
 function startSvc() {
@@ -96,6 +112,7 @@ function startSvc() {
       OPENCHAMBER_SERVICE_TOKEN: 't',
       OPENCHAMBER_OPENCODE_URL: `http://127.0.0.1:${ocPort}`,
       OPENCHAMBER_SERVICE_DATA_DIR: dataDir,
+      OPENCODE_CONFIG: svcConfigPath,
     },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
@@ -272,15 +289,27 @@ try {
   const nitro = d2.pairs.find((p) => p.model === 'openrouter/z-ai/glm-5.3:nitro');
   assert.ok(nitro && nitro.steps === 2, `dash+colon nitro merged: ${JSON.stringify(d2.pairs)}`);
   assert.equal(nitro.effort, 'max', `glm default effort: ${JSON.stringify(nitro)}`);
-  assert.equal(nitro.name, 'GLM 5.3:nitro', `glm display name keeps suffix: ${JSON.stringify(nitro)}`);
+  assert.equal(nitro.name, 'Fixture GLM Nitro Name', `config name wins verbatim: ${JSON.stringify(nitro)}`);
   const floor = d2.pairs.find((p) => p.model === 'openrouter/z-ai/glm-5.3:floor');
-  assert.ok(floor && floor.steps === 1 && floor.name === 'GLM 5.3:floor', `floor separate: ${JSON.stringify(d2.pairs)}`);
+  assert.ok(floor && floor.steps === 1 && floor.name === 'Fixture GLM Floor Name', `dash config key canonicalized: ${JSON.stringify(d2.pairs)}`);
   const ds = d2.pairs.find((p) => p.model === 'deepseek/deepseek-v4');
   assert.ok(ds && ds.effort === 'max', `deepseek default max: ${JSON.stringify(d2.pairs)}`);
+  assert.equal(ds.name, 'deepseek-v4', `empty config name ignored, bare id fallback: ${JSON.stringify(ds)}`);
   const meta = d2.pairs.find((p) => p.model === 'meta/muse-spark-1.1');
   assert.ok(meta && meta.effort === '' && meta.name === 'Muse Spark 1.1', `meta no default: ${JSON.stringify(d2.pairs)}`);
   const nex = d2.pairs.find((p) => p.model === 'nex-agi/nex-n2.5-pro');
   assert.ok(nex && nex.effort === 'medium' && nex.name === 'Nex-N2.5 Pro', `nex default medium: ${JSON.stringify(d2.pairs)}`);
+
+  // missing config file -> built-in map fallback, service still answers
+  svc.kill('SIGKILL');
+  await sleep(300);
+  svcConfigPath = '/tmp/opencode/agent-stats-test-does-not-exist.json';
+  startSvc();
+  await sleep(600);
+  const noCfg = await svcGet('/stats?period=all');
+  assert.equal(noCfg.body.complete, true);
+  const buildPairNoCfg = noCfg.body.data.pairs.find((p) => p.agent === 'build' && p.model === 'anthropic/claude-sonnet-4');
+  assert.equal(buildPairNoCfg.name, 'Claude Sonnet 4.5', `map fallback without config: ${JSON.stringify(buildPairNoCfg)}`);
 
   console.log('ALL TESTS PASSED');
 } finally {

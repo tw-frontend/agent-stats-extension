@@ -17,7 +17,7 @@ An [OpenChamber](https://openchamber.dev) extension that shows cost, prompts and
 - Periods: **Today**, **Shamsi month** (Jalali, from the 1st of the current Persian month), **7 days**, **30 days**
 - Bare model names (`glm-5.3:floor`, not `openrouter/z-ai/glm-5.3:floor`) and a separate **Effort** column — routing suffixes `:floor` / `:nitro` stay part of the model name (they are different models), only real reasoning-effort variants land in Effort
 - **Routing separators are canonicalized**: `-nitro` and `:nitro` are the same model and merge into one row (`:floor` stays separate)
-- **Display names** (opencode-style: "Claude Opus 4.6", "GLM 5.3", "GLM 5.3:floor", "Muse Spark 1.1", "Nex-N2.5 Pro") instead of raw model ids where known
+- **Display names** instead of raw model ids: per-model names from your OpenCode config (`providers.<provider>.models.<id>.name` in the global `opencode.json`, used verbatim including routing words like "GLM 5.3 Floor") take precedence, with a built-in map (opencode-style: "Claude Opus 4.6", "GLM 5.3", "Muse Spark 1.1", "Nex-N2.5 Pro") as the fallback for models with no config entry. The service reads only the `name` strings from that file — never API keys. Project-local/session configs are not covered
 - **Effort is resolved per model**: the message variant wins; when absent, the model's API default applies (Claude and Gemini 3 → `high`, GPT-5/o-series → `medium`, GLM and DeepSeek → `max`, Nex-N2.5 → `medium`, Meta → no default), and the totals merge on the resolved value
 - Subagent sessions are included, so their agents (e.g. `plan`, `general`) get their own rows
 
@@ -29,7 +29,7 @@ In OpenChamber: **Settings → Extensions → Folder, ZIP or URL**, paste:
 https://github.com/tw-frontend/agent-stats-extension.git
 ```
 
-then choose **Add** and approve the local service (read-only access to your OpenCode sessions and messages). Or click:
+then choose **Add** and approve the local service (read-only access to your OpenCode sessions and messages, plus the model-name strings in your `opencode.json`). Or click:
 
 [Install Agent Stats](openchamber://extensions/install?url=https://github.com/tw-frontend/agent-stats-extension.git)
 

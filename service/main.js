@@ -62,7 +62,32 @@ function defaultEffort(base) {
   }
   return "";
 }
-function displayName(provider, base) {
+function loadConfigNames() {
+  const names = new Map;
+  const cfgPath = process.env.OPENCODE_CONFIG || path.join(os.homedir(), ".config", "opencode", "opencode.json");
+  try {
+    const cfg = JSON.parse(fs.readFileSync(cfgPath, "utf8"));
+    const providers = cfg && typeof cfg === "object" ? cfg.providers : null;
+    if (providers && typeof providers === "object") {
+      for (const [pid, p] of Object.entries(providers)) {
+        const models = p?.models;
+        if (!models || typeof models !== "object")
+          continue;
+        for (const [mid, m] of Object.entries(models)) {
+          const name = m?.name;
+          if (typeof name === "string" && name.trim()) {
+            names.set(`${pid}/${canonicalModel(mid)}`, name.trim());
+          }
+        }
+      }
+    }
+  } catch {}
+  return names;
+}
+function displayName(provider, base, cfg) {
+  const hit = cfg.get(provider ? `${provider}/${base}` : base);
+  if (hit)
+    return hit;
   const bare = base.split("/").pop() || base;
   const routing = ROUTING_SUFFIX.exec(bare);
   const suffix = routing ? `:${routing[1]}` : "";
@@ -393,6 +418,7 @@ function buildSeries(cutoff, now, granularity) {
 }
 function aggregate(period) {
   const now = Date.now();
+  const cfgNames = loadConfigNames();
   const cutoff = periodCutoff(period, now);
   const granularity = cutoff > 0 && now - cutoff <= 48 * HOUR ? "hour" : "day";
   const series = cutoff > 0 ? buildSeries(cutoff, now, granularity) : [];
@@ -434,7 +460,7 @@ function aggregate(period) {
         entry.agent = r[2];
         entry.model = base;
         entry.effort = eff;
-        entry.name = displayName(r[3], r[4]);
+        entry.name = displayName(r[3], r[4], cfgNames);
       }
     }
     if (used)

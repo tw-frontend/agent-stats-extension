@@ -89,7 +89,41 @@ function defaultEffort(base: string): string {
   return '';
 }
 
-function displayName(provider: string, base: string): string {
+// Display names from the OpenCode config (providers.<pid>.models.<mid>.name)
+// which the user maintains per model. The file also holds API keys, so only
+// non-empty string names are extracted; the file and raw content are never
+// logged or returned. Missing/invalid file -> empty map -> built-in fallback.
+function loadConfigNames(): Map<string, string> {
+  const names = new Map<string, string>();
+  const cfgPath = process.env.OPENCODE_CONFIG
+    || path.join(os.homedir(), '.config', 'opencode', 'opencode.json');
+  try {
+    const cfg = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
+    const providers = cfg && typeof cfg === 'object' ? cfg.providers : null;
+    if (providers && typeof providers === 'object') {
+      for (const [pid, p] of Object.entries(providers as Record<string, unknown>)) {
+        const models = (p as { models?: unknown })?.models;
+        if (!models || typeof models !== 'object') continue;
+        for (const [mid, m] of Object.entries(models as Record<string, unknown>)) {
+          const name = (m as { name?: unknown })?.name;
+          if (typeof name === 'string' && name.trim()) {
+            names.set(`${pid}/${canonicalModel(mid)}`, name.trim());
+          }
+        }
+      }
+    }
+  } catch {
+    // no config, unreadable, or invalid JSON -> fallback names
+  }
+  return names;
+}
+
+// Config names win and are used verbatim (they already encode the routing
+// word, e.g. "GLM 5.3 Floor"). The curated map is the fallback for models
+// with no config entry; the bare id is the last resort.
+function displayName(provider: string, base: string, cfg: Map<string, string>): string {
+  const hit = cfg.get(provider ? `${provider}/${base}` : base);
+  if (hit) return hit;
   const bare = (base.split('/').pop() || base);
   const routing = ROUTING_SUFFIX.exec(bare);
   const suffix = routing ? `:${routing[1]}` : '';
@@ -454,6 +488,7 @@ type Agg = { p: number; s: number; c: number; t: number };
 
 function aggregate(period: string) {
   const now = Date.now();
+  const cfgNames = loadConfigNames();
   const cutoff = periodCutoff(period, now);
   const granularity: 'day' | 'hour' = cutoff > 0 && now - cutoff <= 48 * HOUR ? 'hour' : 'day';
   const series = cutoff > 0 ? buildSeries(cutoff, now, granularity) : [];
@@ -492,7 +527,7 @@ function aggregate(period: string) {
         entry.agent = r[2];
         entry.model = base;
         entry.effort = eff;
-        entry.name = displayName(r[3], r[4]);
+        entry.name = displayName(r[3], r[4], cfgNames);
       }
     }
     if (used) totals.sessions++;

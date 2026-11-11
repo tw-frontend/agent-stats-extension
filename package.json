@@ -1,6 +1,6 @@
 {
   "name": "@simra/agent-stats",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "Agent Stats — per-agent and per-agent × model cost, prompts and steps for OpenChamber, styled like the built-in stats page.",
   "license": "MIT",
   "private": true,
